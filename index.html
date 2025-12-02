@@ -227,19 +227,19 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
   import {
     getFirestore, collection, doc, setDoc, addDoc, onSnapshot,
-    deleteDoc, getDoc
+    deleteDoc, getDoc, getDocs, updateDoc
   } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-  // ----- PASTE YOUR FIREBASE CONFIG HERE -----
-const firebaseConfig = {
-  apiKey: "AIzaSyDf1kXb9WRKCzndSdiZgLNhrumHzNY7oZ8",
-  authDomain: "expense-tracker-f2342.firebaseapp.com",
-  projectId: "expense-tracker-f2342",
-  storageBucket: "expense-tracker-f2342.firebasestorage.app",
-  messagingSenderId: "848778987634",
-  appId: "1:848778987634:web:03121c7d383610fe351aeb",
-  measurementId: "G-39LH377PJD"
-};
+  // ----- Firebase Config -----
+  const firebaseConfig = {
+    apiKey: "AIzaSyDf1kXb9WRKCzndSdiZgLNhrumHzNY7oZ8",
+    authDomain: "expense-tracker-f2342.firebaseapp.com",
+    projectId: "expense-tracker-f2342",
+    storageBucket: "expense-tracker-f2342.firebasestorage.app",
+    messagingSenderId: "848778987634",
+    appId: "1:848778987634:web:03121c7d383610fe351aeb",
+    measurementId: "G-39LH377PJD"
+  };
 
   // --- Initialize Firebase ---
   const app = initializeApp(firebaseConfig);
@@ -285,7 +285,7 @@ const firebaseConfig = {
   const metaDoc = doc(db, 'meta', 'categories'); // store categories here
 
   // -------------------------
-  // UI helpers (same as before)
+  // UI helpers
   // -------------------------
   function animateCounter(el, start, end, duration=800){
     start = Number(start) || 0;
@@ -338,10 +338,15 @@ const firebaseConfig = {
   // render table
   function renderTable(){
     tbody.innerHTML = '';
-    const sorted = [...entries].sort((a,b) => { if(a.dateISO && b.dateISO) return new Date(b.dateISO)-new Date(a.dateISO); return 0; });
+    const sorted = [...entries].sort((a,b) => { 
+      if(a.dateISO && b.dateISO) return new Date(b.dateISO)-new Date(a.dateISO); 
+      return 0; 
+    });
+    
     sorted.forEach(e => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${e.date}</td><td>${e.category}</td><td>${e.desc}</td><td>${Number(e.amount).toFixed(2)}</td><td><button class="edit">Edit</button><button class="del">Delete</button></td>`;
+      
       tr.querySelector('.edit').onclick = () => {
         editIdEl.value = e.id;
         dateEl.value = e.dateISO || '';
@@ -351,6 +356,7 @@ const firebaseConfig = {
         document.getElementById('submitBtn').textContent = 'Update Expense';
         window.scrollTo({ top: 0, behavior: 'smooth' });
       };
+      
       tr.querySelector('.del').onclick = async () => {
         if(confirm('Delete this expense?')){
           try{
@@ -368,7 +374,10 @@ const firebaseConfig = {
     summaryList.innerHTML = '';
     const totals = {};
     categories.forEach(c => totals[c] = 0);
-    entries.forEach(e => { if(!totals.hasOwnProperty(e.category)) totals[e.category]=0; totals[e.category]+= Number(e.amount) || 0; });
+    entries.forEach(e => { 
+      if(!totals.hasOwnProperty(e.category)) totals[e.category]=0; 
+      totals[e.category]+= Number(e.amount) || 0; 
+    });
 
     const values = Object.values(totals);
     const max = values.length ? Math.max(...values) : 0;
@@ -403,7 +412,35 @@ const firebaseConfig = {
 
     const ctx = document.getElementById('chart');
     if(pieChart) pieChart.destroy();
-    pieChart = new Chart(ctx, { type:'pie', data:{ labels:Object.keys(totals), datasets:[{ data:Object.values(totals) }] }, options:{ plugins:{ legend:{ position:'bottom' } }, maintainAspectRatio:false }});
+    pieChart = new Chart(ctx, { 
+      type:'pie', 
+      data:{ 
+        labels:Object.keys(totals), 
+        datasets:[{ 
+          data:Object.values(totals),
+          backgroundColor: [
+            'rgba(16, 185, 129, 0.8)',
+            'rgba(14, 165, 233, 0.8)',
+            'rgba(139, 92, 246, 0.8)',
+            'rgba(245, 158, 11, 0.8)',
+            'rgba(239, 68, 68, 0.8)',
+            'rgba(6, 182, 212, 0.8)'
+          ]
+        }] 
+      }, 
+      options:{ 
+        plugins:{ 
+          legend:{ 
+            position:'bottom',
+            labels: {
+              padding: 20,
+              usePointStyle: true
+            }
+          } 
+        }, 
+        maintainAspectRatio:false 
+      }
+    });
   }
 
   // render borrows
@@ -413,16 +450,27 @@ const firebaseConfig = {
       const div = document.createElement('div');
       div.className = 'borrow-item';
       div.innerHTML = `<div style="display:flex;gap:10px;align-items:center;"><div style="font-weight:700;">${b.name}</div><div style="color:var(--muted);font-weight:700;">₹ ${Number(b.amount).toFixed(2)}</div></div><div class="borrow-actions"><button class="edit">Edit</button><button class="del">Delete</button></div>`;
+      
       div.querySelector('.edit').onclick = () => {
-        borrowNameEl.value = b.name; borrowAmountEl.value = b.amount; addBorrowBtn.textContent='Update'; addBorrowBtn.dataset.edit=b.id; window.scrollTo({top: document.getElementById('root').offsetTop, behavior:'smooth'});
+        borrowNameEl.value = b.name; 
+        borrowAmountEl.value = b.amount; 
+        addBorrowBtn.textContent='Update'; 
+        addBorrowBtn.dataset.edit=b.id; 
+        window.scrollTo({top: document.getElementById('root').offsetTop, behavior:'smooth'});
       };
+      
       div.querySelector('.del').onclick = async () => {
         if(confirm('Delete this borrowing entry?')){
-          try{ await deleteDoc(doc(db,'borrows', b.id)); } catch(e){ alert('Delete failed: ' + e); }
+          try{ 
+            await deleteDoc(doc(db,'borrows', b.id)); 
+          } catch(e){ 
+            alert('Delete failed: ' + e); 
+          }
         }
       };
       borrowListEl.appendChild(div);
     });
+    
     const total = borrows.reduce((s,b) => s + Number(b.amount), 0);
     animateCounter(totalBorrowedEl, Number(totalBorrowedEl.textContent) || 0, total, 900);
   }
@@ -448,7 +496,7 @@ const firebaseConfig = {
       entries = [];
       snap.forEach(d => {
         const obj = d.data();
-        obj.id = d.id;
+        obj.id = d.id; // Store Firestore document ID
         entries.push(obj);
       });
       renderAll();
@@ -457,29 +505,61 @@ const firebaseConfig = {
     // realtime borrows
     onSnapshot(borrowsCol, snap => {
       borrows = [];
-      snap.forEach(d => { const b = d.data(); b.id = d.id; borrows.push(b); });
+      snap.forEach(d => { 
+        const b = d.data(); 
+        b.id = d.id; 
+        borrows.push(b); 
+      });
       renderBorrows();
     }, err => console.warn('borrows snapshot err', err));
   }
 
-  async function addOrUpdateExpense(obj){
+  // Fixed: Properly handle expense saving without undefined id
+  async function addOrUpdateExpense(expenseData, expenseId = null){
     try{
-      if(obj.id){
-        await setDoc(doc(db,'expenses', obj.id), obj, { merge:true });
+      // Create data object without the id field
+      const dataToSave = {
+        dateISO: expenseData.dateISO,
+        date: expenseData.date,
+        category: expenseData.category,
+        desc: expenseData.desc,
+        amount: Number(expenseData.amount) || 0
+      };
+      
+      if(expenseId){
+        // Update existing document
+        await setDoc(doc(db, 'expenses', expenseId), dataToSave, { merge: true });
       } else {
-        await addDoc(expensesCol, obj);
+        // Create new document - Firestore will auto-generate ID
+        await addDoc(expensesCol, dataToSave);
       }
-    }catch(e){ alert('Save failed: ' + e); console.warn(e); }
+    }catch(e){ 
+      alert('Save failed: ' + e.message); 
+      console.error('Save error:', e); 
+      throw e;
+    }
   }
 
-  async function addOrUpdateBorrow(b){
+  // Fixed: Properly handle borrow saving without undefined id
+  async function addOrUpdateBorrow(borrowData, borrowId = null){
     try{
-      if(b.id){
-        await setDoc(doc(db,'borrows', b.id), b, { merge:true });
+      const dataToSave = {
+        name: borrowData.name,
+        amount: Number(borrowData.amount) || 0
+      };
+      
+      if(borrowId){
+        // Update existing document
+        await setDoc(doc(db, 'borrows', borrowId), dataToSave, { merge: true });
       } else {
-        await addDoc(borrowsCol, b);
+        // Create new document
+        await addDoc(borrowsCol, dataToSave);
       }
-    }catch(e){ alert('Save failed: ' + e); console.warn(e); }
+    }catch(e){ 
+      alert('Save failed: ' + e.message); 
+      console.error('Save error:', e); 
+      throw e;
+    }
   }
 
   // -------------------------
@@ -487,102 +567,185 @@ const firebaseConfig = {
   // -------------------------
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    const id = editIdEl.value;
-    const obj = {
-      id: id ? id : undefined,
-      dateISO: dateEl.value,
-      date: dateEl.value ? new Date(dateEl.value).toLocaleDateString('en-GB') : '',
+    
+    // Get form values
+    const expenseId = editIdEl.value || null;
+    const dateValue = dateEl.value;
+    
+    if(!dateValue || !catEl.value || !descEl.value || !amountEl.value || Number(amountEl.value) <= 0){
+      alert('Please fill all fields with valid values. Amount must be positive.');
+      return;
+    }
+    
+    const expenseData = {
+      dateISO: dateValue,
+      date: dateValue ? new Date(dateValue).toLocaleDateString('en-GB') : '',
       category: catEl.value || 'Other',
-      desc: descEl.value || '',
-      amount: Number(amountEl.value) || 0
+      desc: descEl.value.trim(),
+      amount: Number(amountEl.value)
     };
-    if(!obj.date || !obj.category || !obj.desc || obj.amount <= 0){ alert('Please fill date, category, description and a positive amount.'); return; }
-    await addOrUpdateExpense(obj);
-    form.reset();
-    editIdEl.value='';
-    document.getElementById('submitBtn').textContent='Add Expense';
-    // changes will be visible via onSnapshot
+    
+    try {
+      await addOrUpdateExpense(expenseData, expenseId);
+      
+      // Reset form on success
+      form.reset();
+      editIdEl.value = '';
+      document.getElementById('submitBtn').textContent = 'Add Expense';
+      
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch(error) {
+      console.error('Failed to save expense:', error);
+    }
   });
 
   addBorrowBtn.addEventListener('click', async (ev) => {
     ev.preventDefault();
-    const name = (borrowNameEl.value || '').trim(); const amt = Number(borrowAmountEl.value) || 0;
-    if(!name || amt <= 0){ alert('Please enter name and positive amount'); return; }
-    const editId = addBorrowBtn.dataset.edit;
-    const b = { id: editId ? editId : undefined, name, amount: amt };
-    await addOrUpdateBorrow(b);
-    borrowNameEl.value=''; borrowAmountEl.value=''; addBorrowBtn.textContent='Add Borrowing'; delete addBorrowBtn.dataset.edit;
+    
+    const borrowId = addBorrowBtn.dataset.edit || null;
+    const name = (borrowNameEl.value || '').trim();
+    const amount = Number(borrowAmountEl.value) || 0;
+    
+    if(!name || amount <= 0){
+      alert('Please enter a valid name and positive amount');
+      return;
+    }
+    
+    const borrowData = {
+      name: name,
+      amount: amount
+    };
+    
+    try {
+      await addOrUpdateBorrow(borrowData, borrowId);
+      
+      // Reset form
+      borrowNameEl.value = '';
+      borrowAmountEl.value = '';
+      addBorrowBtn.textContent = 'Add Borrowing';
+      delete addBorrowBtn.dataset.edit;
+    } catch(error) {
+      console.error('Failed to save borrowing:', error);
+    }
   });
 
-  // clear all (delete all docs) - careful
+  // clear all (delete all docs)
   document.getElementById('clearAll').addEventListener('click', async () => {
-    if(!confirm('Clear ALL data (expenses + borrowings + categories)? This will remove data from your Firestore. Proceed?')) return;
+    if(!confirm('Clear ALL data (expenses + borrowings)? This will remove data from your Firestore. Proceed?')) return;
+    
     try{
-      // delete all expenses
+      // Delete all expenses
       const eSnap = await getDocs(expensesCol);
-      for(const d of eSnap.docs) await deleteDoc(doc(db,'expenses', d.id));
-      // delete all borrows
+      const expenseDeletions = [];
+      eSnap.forEach((d) => {
+        expenseDeletions.push(deleteDoc(doc(db, 'expenses', d.id)));
+      });
+      await Promise.all(expenseDeletions);
+      
+      // Delete all borrows
       const bSnap = await getDocs(borrowsCol);
-      for(const d of bSnap.docs) await deleteDoc(doc(db,'borrows', d.id));
-      // reset categories
-      categories = ["Travel","Grocery","Online Food","In Office","Party","Other"];
-      await setDoc(metaDoc, { categories }, { merge:true });
-      alert('All cleared.');
-    }catch(err){ alert('Clear failed: ' + err); }
+      const borrowDeletions = [];
+      bSnap.forEach((d) => {
+        borrowDeletions.push(deleteDoc(doc(db, 'borrows', d.id)));
+      });
+      await Promise.all(borrowDeletions);
+      
+      alert('All data cleared successfully.');
+    } catch(err) { 
+      alert('Clear failed: ' + err.message); 
+    }
   });
 
-  // export PDF (light theme) - same as before
+  // export PDF (light theme)
   document.getElementById('exportPDF').addEventListener('click', async () => {
     const root = document.getElementById('root');
-    const oldBG = root.style.background, oldColor = root.style.color;
-    root.style.background = 'white'; root.style.color = 'black';
-    await new Promise(r => setTimeout(r,220));
-    html2canvas(root, { scale:2, useCORS:true }).then(canvas => {
+    const oldBG = root.style.background;
+    const oldColor = root.style.color;
+    
+    // Change to white background for PDF
+    root.style.background = 'white';
+    root.style.color = 'black';
+    
+    await new Promise(r => setTimeout(r, 220));
+    
+    try {
+      const canvas = await html2canvas(root, { 
+        scale: 2, 
+        useCORS: true,
+        backgroundColor: '#ffffff'
+      });
+      
       const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF('p','pt','a4');
+      const pdf = new jsPDF('p', 'pt', 'a4');
       const img = canvas.toDataURL('image/png');
       const pageW = pdf.internal.pageSize.getWidth() - 20;
-      const pageH = canvas.height * pageW / canvas.width;
+      const pageH = (canvas.height * pageW) / canvas.width;
+      
       pdf.addImage(img, 'PNG', 10, 10, pageW, pageH);
-      pdf.save('prabir_expense.pdf');
-      root.style.background = oldBG; root.style.color = oldColor;
-    }).catch(err => { alert('PDF export failed: ' + err); root.style.background = oldBG; root.style.color = oldColor; });
+      pdf.save('prabir_expense_tracker.pdf');
+    } catch(err) {
+      alert('PDF export failed: ' + err.message);
+    } finally {
+      // Restore original styles
+      root.style.background = oldBG;
+      root.style.color = oldColor;
+    }
   });
 
   // -------------------------
   // Render all (UI)
   // -------------------------
-  function renderAll(){ renderDropdown(); renderTable(); renderSummary(); /* borrows are rendered by snapshot */ }
+  function renderAll(){ 
+    renderDropdown(); 
+    renderTable(); 
+    renderSummary(); 
+  }
 
-  // bootstrap
+  // Initialize
   loadAll();
   renderDropdown();
 
-  // background particles (same as your original)
-  const canvas = document.getElementById('bgCanvas'), ctx = canvas.getContext('2d');
-  let W = canvas.width = window.innerWidth, H = canvas.height = window.innerHeight;
-  window.addEventListener('resize', () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; });
-  const PARTICLE_COUNT = Math.min(160, Math.floor((window.innerWidth*window.innerHeight)/15000));
+  // Set today's date as default
+  const today = new Date().toISOString().split('T')[0];
+  dateEl.value = today;
+
+  // background particles
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+  let W = canvas.width = window.innerWidth;
+  let H = canvas.height = window.innerHeight;
+  
+  window.addEventListener('resize', () => { 
+    W = canvas.width = window.innerWidth; 
+    H = canvas.height = window.innerHeight; 
+  });
+  
+  const PARTICLE_COUNT = Math.min(160, Math.floor((window.innerWidth * window.innerHeight) / 15000));
   const particles = [];
-  for(let i=0;i<PARTICLE_COUNT;i++){
+  
+  for(let i = 0; i < PARTICLE_COUNT; i++){
     particles.push({
-      x: Math.random()*W,
-      y: Math.random()*H,
-      r: Math.random()*3 + 0.8,
-      dx: (Math.random()*1.2 - 0.6),
-      dy: (Math.random()*1.2 - 0.6),
-      alpha: Math.random()*0.6 + 0.2
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 3 + 0.8,
+      dx: (Math.random() * 1.2 - 0.6),
+      dy: (Math.random() * 1.2 - 0.6),
+      alpha: Math.random() * 0.6 + 0.2
     });
   }
+  
   function drawParticles(){
-    ctx.clearRect(0,0,W,H);
+    ctx.clearRect(0, 0, W, H);
     particles.forEach(p => {
       ctx.beginPath();
-      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle = `rgba(16,185,129,${p.alpha})`;
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(16, 185, 129, ${p.alpha})`;
       ctx.fill();
-      p.x += p.dx + Math.sin((Date.now()/1000)+p.x*0.001)*0.22;
-      p.y += p.dy + Math.cos((Date.now()/1200)+p.y*0.001)*0.22;
+      
+      p.x += p.dx + Math.sin((Date.now() / 1000) + p.x * 0.001) * 0.22;
+      p.y += p.dy + Math.cos((Date.now() / 1200) + p.y * 0.001) * 0.22;
+      
       if(p.x < -10) p.x = W + 10;
       if(p.x > W + 10) p.x = -10;
       if(p.y < -10) p.y = H + 10;
@@ -592,7 +755,7 @@ const firebaseConfig = {
   }
   drawParticles();
 
-  // service worker registration (PWA) - keep if you have service-worker.js
+  // service worker registration (PWA)
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js').then(reg => {
