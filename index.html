@@ -158,9 +158,122 @@
 
     footer{ margin-top:18px; font-size:12px; color:var(--muted); text-align:center; }
 
+
     @media (max-width:980px){
       .grid{ grid-template-columns: 1fr; }
       .chart-wrap{ height:220px; }
+    }
+
+    @media (max-width:600px){
+      body {
+        padding: 0;
+      }
+      .container {
+        max-width: 100vw;
+        margin: 0;
+        padding: 8px 2px;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .controls {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .btn, .btn.ghost {
+        width: 100%;
+        min-width: 0;
+        font-size: 15px;
+        padding: 12px 0;
+      }
+      .card {
+        margin-top: 10px !important;
+        padding: 10px 6px;
+        border-radius: 10px;
+      }
+      .table-modern thead th, .table-modern tbody td {
+        padding: 8px 2px;
+        font-size: 13px;
+      }
+      .table-modern thead th {
+        padding: 10px 2px;
+        font-size: 14px;
+      }
+      .actions {
+        flex-direction: row;
+        gap: 4px;
+      }
+      .actions button {
+        padding: 6px 8px;
+        font-size: 13px;
+      }
+      .borrow-list, .notes-list {
+        gap: 8px;
+      }
+      .borrow-item, .note-item {
+        padding: 8px 4px;
+        border-radius: 8px;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .borrow-left, .note-body {
+        gap: 8px;
+      }
+      .borrow-avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 13px;
+      }
+      .emoji {
+        width: 36px;
+        height: 36px;
+        font-size: 15px;
+      }
+      .summary-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 10px 6px;
+      }
+      .summary-top {
+        flex-direction: row;
+        gap: 8px;
+      }
+      .summary-progress {
+        width: 100%;
+        margin-left: 0;
+      }
+      .progress-wrap {
+        height: 10px;
+      }
+      .counter {
+        min-width: 36px;
+        font-size: 14px;
+      }
+      .cat-badge {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      input, .dropdown-btn {
+        font-size: 14px;
+        padding: 8px 6px;
+      }
+      label {
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+      .row {
+        gap: 6px;
+      }
+      footer {
+        font-size: 11px;
+        padding: 8px 2px;
+      }
     }
 
     /* animated counter style */
