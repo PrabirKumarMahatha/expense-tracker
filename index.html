@@ -274,6 +274,16 @@
         font-size: 11px;
         padding: 8px 2px;
       }
+      /* Mobile list styles */
+      .table-modern { display: none; }
+      .mobile-list { display: block; padding: 6px 2px; }
+      .mobile-item { display:flex; gap:8px; align-items:center; background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,249,250,0.9)); border:1px solid rgba(0,0,0,0.04); padding:10px; border-radius:10px; margin-bottom:8px; }
+      .mobile-item .m-left { display:flex; gap:8px; align-items:center; flex:1; }
+      .mobile-item .m-date { font-size:12px; color:var(--muted); width:86px; flex-shrink:0; }
+      .mobile-item .m-desc { font-size:14px; color:var(--text); flex:1; }
+      .mobile-item .m-amt { font-weight:800; font-size:14px; color:var(--text); white-space:nowrap; margin-left:8px; }
+      .mobile-item .m-actions { display:flex; gap:6px; margin-left:8px; }
+      .mobile-badge { font-size:12px; padding:4px 8px; border-radius:999px; font-weight:700; color:white; }
     }
 
     /* animated counter style */
@@ -352,6 +362,8 @@
             <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Action</th></tr></thead>
             <tbody id="tbody"></tbody>
           </table>
+          <!-- Mobile list view (shown only on small screens) -->
+          <div id="mobileList" class="mobile-list" aria-hidden="true"></div>
         </div>
 
         <div class="card" style="margin-top:14px;">
@@ -598,12 +610,16 @@
 
     // render table
   function renderTable(){
+    const mobileList = document.getElementById('mobileList');
+    const isMobile = window.innerWidth <= 600;
     tbody.innerHTML = '';
+    if(mobileList) mobileList.innerHTML = '';
+
     const sorted = [...entries].sort((a,b) => { 
       if(a.dateISO && b.dateISO) return new Date(b.dateISO)-new Date(a.dateISO); 
       return 0; 
     });
-    
+
     const filtered = sorted.filter(e => {
       const s = (searchTerm || '').trim().toLowerCase();
       if(!s) return true;
@@ -611,34 +627,76 @@
     });
 
     filtered.forEach(e => {
-      const tr = document.createElement('tr');
       const color = categoryColors[e.category] || 'rgba(6,78,59,0.85)';
-      tr.style.borderLeft = `6px solid ${color}`;
-      const catBadge = `<span class="cat-badge" style="background:${color};">${getEmoji(e.category)} ${e.category}</span>`;
-      tr.innerHTML = `<td>${e.date}</td><td>${catBadge}</td><td>${e.desc}</td><td>₹\u00A0${Number(e.amount).toFixed(2)}</td><td><div class="actions"><button class="edit">Edit</button><button class="del">Delete</button></div></td>`;
-      
-      tr.querySelector('.edit').onclick = () => {
-        editIdEl.value = e.id;
-        dateEl.value = e.dateISO || '';
-        catEl.value = e.category;
-        descEl.value = e.desc;
-        amountEl.value = e.amount;
-        document.getElementById('submitBtn').textContent = 'Update Expense';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-      
-      tr.querySelector('.del').onclick = async () => {
-        if(confirm('Delete this expense?')){
-          try{
-            playSound('delete');
-            await deleteDoc(doc(db,'expenses', e.id));
-            // deletion handled by onSnapshot listener
-          }catch(err){ alert('Delete failed: ' + err); }
-        }
-      };
-      tbody.appendChild(tr);
+      const catBadgeHtml = `<span class="cat-badge mobile-badge" style="background:${color};">${getEmoji(e.category)} ${e.category}</span>`;
+
+      if(isMobile && mobileList){
+        // render mobile card
+        const item = document.createElement('div');
+        item.className = 'mobile-item';
+        item.innerHTML = `
+          <div class="m-left">
+            <div class="m-date">${e.date}</div>
+            <div style="display:flex;flex-direction:column;min-width:0;">
+              <div class="m-desc">${catBadgeHtml} <span style="margin-left:6px;">${e.desc}</span></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;">
+            <div class="m-amt">₹\u00A0${Number(e.amount).toFixed(2)}</div>
+            <div class="m-actions">
+              <button class="edit">Edit</button>
+              <button class="del">Delete</button>
+            </div>
+          </div>
+        `;
+
+        // wire actions
+        item.querySelector('.edit').onclick = () => {
+          editIdEl.value = e.id;
+          dateEl.value = e.dateISO || '';
+          catEl.value = e.category;
+          descEl.value = e.desc;
+          amountEl.value = e.amount;
+          document.getElementById('submitBtn').textContent = 'Update Expense';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+        item.querySelector('.del').onclick = async () => {
+          if(confirm('Delete this expense?')){
+            try{ playSound('delete'); await deleteDoc(doc(db,'expenses', e.id)); }catch(err){ alert('Delete failed: ' + err); }
+          }
+        };
+
+        mobileList.appendChild(item);
+      } else {
+        const tr = document.createElement('tr');
+        tr.style.borderLeft = `6px solid ${color}`;
+        tr.innerHTML = `<td>${e.date}</td><td>${catBadgeHtml}</td><td>${e.desc}</td><td>₹\u00A0${Number(e.amount).toFixed(2)}</td><td><div class="actions"><button class="edit">Edit</button><button class="del">Delete</button></div></td>`;
+
+        tr.querySelector('.edit').onclick = () => {
+          editIdEl.value = e.id;
+          dateEl.value = e.dateISO || '';
+          catEl.value = e.category;
+          descEl.value = e.desc;
+          amountEl.value = e.amount;
+          document.getElementById('submitBtn').textContent = 'Update Expense';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+        tr.querySelector('.del').onclick = async () => {
+          if(confirm('Delete this expense?')){
+            try{ playSound('delete'); await deleteDoc(doc(db,'expenses', e.id)); }catch(err){ alert('Delete failed: ' + err); }
+          }
+        };
+        tbody.appendChild(tr);
+      }
     });
   }
+
+  // re-render table on resize/orientation change to switch views
+  window.addEventListener('resize', () => {
+    // debounce small reflows
+    clearTimeout(window._renderTableTimeout);
+    window._renderTableTimeout = setTimeout(() => renderTable(), 120);
+  });
 
   // render summary
   function renderSummary(){
