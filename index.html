@@ -1,0 +1,1351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prabir Expense Tracker (Firestore)</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- html2canvas + jsPDF for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg: linear-gradient(135deg, #d1fae5, #a7f3d0, #ecfdf5);
+      --card-bg: rgba(255,255,255,0.66);
+      --muted: #4b5563;
+      --text: #064e3b;
+      --accent-start: #10b981;
+      --accent-end: #0ea5e9;
+      --glow-start: rgba(16,185,129,0.95);
+      --glow-end: rgba(14,165,233,0.95);
+      --input-bg: rgba(16,185,129,0.20);
+      --input-border: rgba(16,185,129,0.35);
+      --card-border: rgba(0,0,0,0.08);
+    }
+
+    *{ box-sizing: border-box; }
+    body{
+      margin:0;
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      overflow-x:hidden;
+    }
+
+    #bgCanvas{
+      position:fixed; top:0; left:0; width:100%; height:100%; z-index:-2;
+    }
+    .overlay { position:fixed; inset:0; background: radial-gradient(circle at 10% 10%, rgba(255,255,255,0.06), transparent 8%), radial-gradient(circle at 90% 90%, rgba(255,255,255,0.04), transparent 10%); z-index:-1; pointer-events:none; }
+
+    .container{
+      max-width:1100px;
+      margin:32px auto;
+      padding:28px;
+      border-radius:16px;
+      background:var(--card-bg);
+      box-shadow: 0 12px 30px rgba(6, 30, 20, 0.12);
+      border:1px solid var(--card-border);
+      backdrop-filter: blur(8px);
+    }
+
+    header{ display:flex; justify-content:space-between; align-items:center; gap:16px; }
+    header h1{ margin:0; font-size:22px; }
+    .sub{ color:var(--muted); font-size:13px; margin-top:6px; }
+    .controls{ display:flex; gap:10px; align-items:center; }
+
+    .btn{
+      padding:10px 14px; border-radius:10px; border:none;
+      font-weight:700; cursor:pointer;
+      background: linear-gradient(90deg,var(--accent-start),var(--accent-end));
+      color:white;
+      box-shadow: 0 6px 18px rgba(14,165,233,0.09);
+      transition: all 0.3s cubic-bezier(0.2, 0.9, 0.2, 1);
+      transform: translateY(0);
+    }
+    .btn:hover{ 
+      transform: translateY(-2px); 
+      box-shadow: 0 10px 28px rgba(14,165,233,0.15);
+    }
+    .btn:active{ transform: translateY(0); }
+    .btn.ghost{ background: white; color: var(--text); border:1px solid var(--card-border); box-shadow:none; }
+    .btn.ghost:hover{ background: #f8fafb; }
+
+    .grid{ display:grid; grid-template-columns: 1fr 360px; gap:18px; margin-top:20px; }
+
+    .card{ padding:16px; border-radius:12px; background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0.55)); border:1px solid var(--card-border); box-shadow: 0 6px 18px rgba(8,24,16,0.06); transition: all 0.3s ease; }
+    .card:hover{ box-shadow: 0 8px 24px rgba(8,24,16,0.1); border-color: rgba(16,185,129,0.2); }
+
+    label{ font-size:13px; color:var(--muted); display:block; margin-bottom:6px; }
+
+    input, .dropdown-btn{
+      padding:10px 12px; border-radius:8px; border:1px solid var(--input-border);
+      background: var(--input-bg); color:var(--text); font-size:14px; width:100%; outline:none;
+      transition: all 0.2s ease;
+    }
+    input:focus, .dropdown-btn:focus{ 
+      background: rgba(16,185,129,0.35); 
+      border-color: rgba(16,185,129,0.6);
+      box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+    }
+    input::placeholder, .dropdown-btn::placeholder { color: rgba(6,78,59,0.45); }
+
+    .row{ display:flex; gap:10px; margin-top:10px; align-items:end; }
+    table{ width:100%; border-collapse:collapse; margin-top:12px; }
+    tbody tr{ transition: background-color 0.2s ease; }
+    tbody tr:hover{ background-color: rgba(16,185,129,0.06); }
+    thead th{ text-align:left; font-size:13px; color:var(--muted); padding:8px 6px; border-bottom:1px solid var(--card-border); }
+    tbody td{ padding:10px 6px; border-bottom:1px dashed rgba(0,0,0,0.04); vertical-align:middle; }
+
+    .actions{ display:flex; gap:6px; align-items:center; }
+    .actions button{ margin-right:0; padding:6px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:600; white-space:nowrap; transition: all 0.2s ease; }
+    .actions button:hover{ transform: scale(1.05); }
+    .actions button:active{ transform: scale(0.98); }
+    .edit{ background:#fef3c7; color:#92400e; } .del{ background:#fee2e2; color:#991b1b; }
+
+    /* Modern table look */
+    .table-modern{ border-radius:12px; overflow:hidden; }
+    .table-modern thead th{ background: linear-gradient(90deg, rgba(14,165,233,0.95), rgba(16,185,129,0.95)); color:#fff; padding:12px; font-weight:700; }
+    .table-modern tbody td{ background: rgba(255,255,255,0.72); }
+    .table-modern tbody tr{ transition: transform 0.18s ease, box-shadow 0.18s ease; border-left:6px solid transparent; }
+    .table-modern tbody tr:hover{ transform: translateY(-6px); box-shadow: 0 14px 30px rgba(6,30,20,0.12); }
+    .cat-badge{ padding:6px 10px; border-radius:999px; font-weight:700; color:white; display:inline-block; font-size:13px; white-space:nowrap; }
+
+    .summary-grid{ display:grid; grid-template-columns: 1fr; gap:12px; margin-top:10px; }
+    .summary-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border-radius:12px; background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,249,250,0.9)); border:1px solid rgba(0,0,0,0.04); box-shadow: 0 8px 26px rgba(6,30,20,0.05); border-left:6px solid transparent; }
+    .summary-row{ transition: transform 0.18s ease, box-shadow 0.18s ease, border-left-color 0.18s ease; }
+    .summary-row:hover{ transform: translateY(-6px); box-shadow: 0 14px 30px rgba(6,30,20,0.12); }
+    .summary-top{ display:flex; align-items:center; gap:12px; }
+    .summary-left{ display:flex; align-items:center; gap:12px; }
+    .emoji{ font-size:18px; width:48px; height:48px; display:flex; align-items:center; justify-content:center; border-radius:10px; color:white; font-weight:800; box-shadow:0 8px 18px rgba(6,30,20,0.06); }
+    .cat-name{ font-weight:800; font-size:14px; } .cat-amt{ font-weight:900; font-size:15px; color:var(--text); }
+    .summary-progress{ flex:1; margin-left:12px; }
+
+    .progress-wrap{ position:relative; height:14px; border-radius:12px; background: linear-gradient(90deg, rgba(6,78,59,0.08), rgba(6,78,59,0.04)); overflow:hidden; border:1px solid rgba(6,78,59,0.06); }
+    .progress{ height:100%; border-radius:12px; width:0%; background: linear-gradient(90deg, var(--glow-start), var(--glow-end)); box-shadow: 0 6px 26px rgba(14,165,233,0.12), inset 0 -6px 16px rgba(16,185,129,0.08); transition: width 700ms cubic-bezier(.2,.9,.2,1); position:relative; overflow:hidden; }
+    .progress::before{ content:""; position:absolute; left:-40%; top:0; bottom:0; width:40%; background: linear-gradient(90deg, rgba(255,255,255,0.25), rgba(255,255,255,0.06), rgba(255,255,255,0.12)); transform: skewX(-20deg); animation: sheen 2.6s linear infinite; opacity:0.6; }
+    @keyframes sheen{ 0% { left:-40%; } 100% { left:140%; } }
+
+    .borrow-list{ display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+    .borrow-item{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border-radius:12px; background: linear-gradient(135deg, rgba(255,255,255,0.85), rgba(250,250,250,0.72)); border:1px solid rgba(0,0,0,0.04); box-shadow: 0 8px 22px rgba(6,30,20,0.06); }
+    .borrow-left{ display:flex; align-items:center; gap:12px; }
+    .borrow-avatar{ width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; color:white; font-size:15px; box-shadow: 0 6px 18px rgba(6,30,20,0.08); }
+    .borrow-meta{ display:flex; flex-direction:column; }
+    .borrow-name{ font-weight:800; color:var(--text); }
+    .borrow-sub{ font-size:12px; color:var(--muted); }
+    .borrow-amt{ white-space:nowrap; font-weight:800; color:var(--text); font-size:15px; }
+    .borrow-actions button{ margin-left:8px; padding:6px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:700; }
+    .borrow-actions{ display:flex; gap:8px; align-items:center; }
+    .borrow-item:hover{ transform: translateY(-6px); transition: transform 180ms ease; }
+
+    .dropdown-container{ position:relative; z-index: 99999 !important; } /* important: keep top */
+    .dropdown-list{
+      display:none; position:absolute; top:112%; left:0; width:100%;
+      background:white; border-radius:10px; box-shadow:0 12px 32px rgba(6,30,20,0.18);
+      border:1px solid var(--card-border); max-height:250px; overflow:auto;
+      z-index: 9999999 !important; /* super high */
+    }
+    .dropdown-item{ padding:10px; cursor:pointer; color:#065f46; }
+    .dropdown-item:hover{ background:#f0fdf4; }
+
+    footer{ margin-top:18px; font-size:12px; color:var(--muted); text-align:center; }
+
+
+    @media (max-width:980px){
+      .grid{ grid-template-columns: 1fr; }
+      .chart-wrap{ height:220px; }
+    }
+
+    @media (max-width:600px){
+      body {
+        padding: 0;
+      }
+      .container {
+        max-width: 100vw;
+        margin: 0;
+        padding: 8px 2px;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .controls {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .btn, .btn.ghost {
+        width: 100%;
+        min-width: 0;
+        font-size: 15px;
+        padding: 12px 0;
+      }
+      .card {
+        margin-top: 10px !important;
+        padding: 10px 6px;
+        border-radius: 10px;
+      }
+      .table-modern thead th, .table-modern tbody td {
+        padding: 8px 2px;
+        font-size: 13px;
+      }
+      .table-modern thead th {
+        padding: 10px 2px;
+        font-size: 14px;
+      }
+      .actions {
+        flex-direction: row;
+        gap: 4px;
+      }
+      .actions button {
+        padding: 6px 8px;
+        font-size: 13px;
+      }
+      .borrow-list, .notes-list {
+        gap: 8px;
+      }
+      .borrow-item, .note-item {
+        padding: 8px 4px;
+        border-radius: 8px;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .borrow-left, .note-body {
+        gap: 8px;
+      }
+      .borrow-avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 13px;
+      }
+      .emoji {
+        width: 36px;
+        height: 36px;
+        font-size: 15px;
+      }
+      .summary-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 10px 6px;
+      }
+      .summary-top {
+        flex-direction: row;
+        gap: 8px;
+      }
+      .summary-progress {
+        width: 100%;
+        margin-left: 0;
+      }
+      .progress-wrap {
+        height: 10px;
+      }
+      .counter {
+        min-width: 36px;
+        font-size: 14px;
+      }
+      .cat-badge {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      input, .dropdown-btn {
+        font-size: 14px;
+        padding: 8px 6px;
+      }
+      label {
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+      .row {
+        gap: 6px;
+      }
+      footer {
+        font-size: 11px;
+        padding: 8px 2px;
+      }
+      /* Mobile list styles */
+      .table-modern { display: none; }
+      .mobile-list { display: block; padding: 6px 2px; }
+      .mobile-item { display:flex; gap:8px; align-items:center; background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,249,250,0.9)); border:1px solid rgba(0,0,0,0.04); padding:10px; border-radius:10px; margin-bottom:8px; }
+      .mobile-item .m-left { display:flex; gap:8px; align-items:center; flex:1; }
+      .mobile-item .m-date { font-size:12px; color:var(--muted); width:86px; flex-shrink:0; }
+      .mobile-item .m-desc { font-size:14px; color:var(--text); flex:1; }
+      .mobile-item .m-amt { font-weight:800; font-size:14px; color:var(--text); white-space:nowrap; margin-left:8px; }
+      .mobile-item .m-actions { display:flex; gap:6px; margin-left:8px; }
+      .mobile-badge { font-size:12px; padding:4px 8px; border-radius:999px; font-weight:700; color:white; }
+    }
+
+    /* animated counter style */
+    .counter { display:inline-block; min-width:52px; text-align:right; }
+
+    /* Notes section styles */
+    .notes-list{ display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+    .note-item{ padding:12px; border-radius:12px; background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(248,249,250,0.82)); border:1px solid rgba(0,0,0,0.04); box-shadow: 0 8px 20px rgba(6,30,20,0.06); display:flex; gap:12px; align-items:flex-start; }
+    .note-accent{ width:6px; border-radius:4px; margin-top:6px; }
+    .note-body{ flex:1; }
+    .note-time{ font-size:12px; color:var(--muted); margin-bottom:8px; }
+    .note-text{ font-size:14px; color:var(--text); line-height:1.5; word-wrap:break-word; }
+    .note-actions{ display:flex; gap:8px; margin-left:8px; }
+    .note-actions button{ padding:6px 10px; border-radius:8px; border:none; cursor:pointer; font-size:13px; font-weight:700; }
+    .note-edit{ background:#fef3c7; color:#92400e; } .note-del{ background:#fee2e2; color:#991b1b; }
+    .note-item:hover{ transform: translateY(-6px); transition: transform 160ms ease; }
+
+    /* Daily summary styles */
+    .daily-summary{ padding:12px; border-radius:10px; background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(14,165,233,0.08)); border:1px solid rgba(16,185,129,0.15); margin-bottom:14px; }
+    .daily-summary-title{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+    .daily-summary-amount{ font-size:20px; font-weight:800; color:var(--text); }
+  </style>
+</head>
+<body>
+  <canvas id="bgCanvas"></canvas>
+  <div class="overlay"></div>
+
+  <div class="container" id="root">
+    <header>
+      <div>
+        <h1>Money Minder — Home Edition 💸</h1>
+        <div class="sub">Keep going — small wins add up! • Offline ready (PWA)</div>
+      </div>
+
+      <div class="controls">
+        <input id="searchInput" placeholder="Search expenses..." style="padding:8px 10px; border-radius:8px; border:1px solid var(--card-border); width:220px;">
+        <button class="btn" id="exportCSV">Export CSV</button>
+        <button class="btn" id="exportPDF">Export to PDF</button>
+        <button class="btn" id="clearAll" style="background:linear-gradient(90deg,#991b1b,#7f1d1d);box-shadow:0 6px 18px rgba(153,27,27,0.15);">Clear All</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <form id="form">
+            <label style="font-weight:700">Date</label>
+            <input type="date" id="date" required>
+
+            <label style="margin-top:12px; font-weight:700">Category</label>
+            <div class="dropdown-container">
+              <input type="text" id="category" class="dropdown-btn" readonly placeholder="Choose category">
+              <div class="dropdown-list" id="dropdown"></div>
+            </div>
+
+            <div class="row" style="margin-top:12px;">
+              <div style="flex:2;">
+                <label style="font-weight:700">Description</label>
+                <input type="text" id="desc" required placeholder="e.g. Uber ride, Zomato">
+              </div>
+              <div style="flex:1;">
+                <label style="font-weight:700">Amount</label>
+                <input type="number" id="amount" required min="1" placeholder="500">
+              </div>
+            </div>
+
+            <div style="margin-top:12px; text-align:right;">
+              <button class="btn" id="submitBtn" type="submit">Add Expense</button>
+            </div>
+            <input type="hidden" id="editId">
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <table class="table-modern">
+            <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Action</th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <!-- Mobile list view (shown only on small screens) -->
+          <div id="mobileList" class="mobile-list" aria-hidden="true"></div>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <h3>💸 Borrowings</h3>
+          <div style="margin-top:8px;">
+            <label>Person (From whom you borrowed)</label>
+            <input type="text" id="borrowName" placeholder="e.g. Ramesh">
+            <div class="row" style="margin-top:8px;">
+              <div style="flex:1;">
+                <label>Amount</label>
+                <input type="number" id="borrowAmount" min="1" placeholder="500">
+              </div>
+              <div style="align-self:flex-end;">
+                <button class="btn" id="addBorrowBtn">Add Borrowing</button>
+              </div>
+            </div>
+
+            <div class="borrow-list" id="borrowList"></div>
+
+            <div style="margin-top:10px; font-weight:800;">Total Borrowed: <span id="totalBorrowed" class="counter">0</span></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <h3>📝 Notes & Reminders</h3>
+          <div style="margin-top:8px;">
+            <label>Add a note</label>
+            <div class="row">
+              <input type="text" id="noteInput" placeholder="e.g. Pending bill from XYZ company..." style="flex:1;">
+              <button class="btn" id="addNoteBtn" style="margin-left:8px; align-self:flex-end;">Add Note</button>
+            </div>
+            <div class="notes-list" id="noteList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>📊 Summary</h3>
+          <div id="summaryList" style="margin-top:8px;"></div>
+
+          <div style="margin-top:10px; font-weight:800;">All Total: <span id="allTotal" class="counter">0</span></div>
+
+          <div class="chart-wrap" style="margin-top:12px; height:320px;">
+            <canvas id="chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Keep going — small wins add up! • Offline ready (PWA)</footer>
+  </div>
+
+  <!-- FIREBASE + APP LOGIC -->
+  <script type="module">
+  // --- Import Firebase modular SDK (v9) ---
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+  import {
+    getFirestore, collection, doc, setDoc, addDoc, onSnapshot,
+    deleteDoc, getDoc, getDocs, updateDoc
+  } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+  // ----- Firebase Config -----
+  const firebaseConfig = {
+    apiKey: "AIzaSyDf1kXb9WRKCzndSdiZgLNhrumHzNY7oZ8",
+    authDomain: "expense-tracker-f2342.firebaseapp.com",
+    projectId: "expense-tracker-f2342",
+    storageBucket: "expense-tracker-f2342.firebasestorage.app",
+    messagingSenderId: "848778987634",
+    appId: "1:848778987634:web:03121c7d383610fe351aeb",
+    measurementId: "G-39LH377PJD"
+  };
+
+  // --- Initialize Firebase ---
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // --- App state ---
+  let entries = [];
+  let categories = ["Travel","Grocery","Online Food","In Office","Party","Other"];
+  let borrows = [];
+  let notes = [];
+
+  // --- Sound effects helper ---
+  function playSound(type) {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioContext.currentTime;
+    
+    if (type === 'success') {
+      // Success: ascending two beeps
+      const osc1 = audioContext.createOscillator();
+      const osc2 = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(audioContext.destination);
+      
+      osc1.frequency.setValueAtTime(800, now);
+      osc1.frequency.setValueAtTime(900, now + 0.1);
+      osc1.start(now);
+      osc1.stop(now + 0.1);
+      
+      osc2.frequency.setValueAtTime(1000, now + 0.15);
+      osc2.frequency.setValueAtTime(1100, now + 0.25);
+      osc2.start(now + 0.15);
+      osc2.stop(now + 0.25);
+      
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.setValueAtTime(0, now + 0.3);
+    } else if (type === 'delete') {
+      // Delete: descending beep (warning tone)
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.setValueAtTime(400, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+      
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.setValueAtTime(0, now + 0.2);
+    } else if (type === 'add') {
+      // Add: single bright beep
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      
+      osc.frequency.setValueAtTime(700, now);
+      osc.start(now);
+      osc.stop(now + 0.15);
+      
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.setValueAtTime(0, now + 0.15);
+    }
+  }
+
+  // DOM refs
+  const tbody = document.getElementById('tbody');
+  const summaryList = document.getElementById('summaryList');
+  const allTotalEl = document.getElementById('allTotal');
+  const chartEl = document.getElementById('chart');
+  const searchInput = document.getElementById('searchInput');
+
+  const form = document.getElementById('form');
+  const dateEl = document.getElementById('date');
+  const catEl = document.getElementById('category');
+  const descEl = document.getElementById('desc');
+  const amountEl = document.getElementById('amount');
+  const editIdEl = document.getElementById('editId');
+
+  const dropdown = document.getElementById('dropdown');
+
+  const borrowNameEl = document.getElementById('borrowName');
+  const borrowAmountEl = document.getElementById('borrowAmount');
+  const addBorrowBtn = document.getElementById('addBorrowBtn');
+  const borrowListEl = document.getElementById('borrowList');
+  const totalBorrowedEl = document.getElementById('totalBorrowed');
+
+  const noteInputEl = document.getElementById('noteInput');
+  const addNoteBtn = document.getElementById('addNoteBtn');
+  const noteListEl = document.getElementById('noteList');
+
+  let pieChart = null;
+  let searchTerm = '';
+
+  // emoji map
+  const emojiMap = {
+    "Travel":"✈️","Grocery":"🛒","Online Food":"🍽️","In Office":"🏢","Party":"🍾","Other":"📌"
+  };
+  function getEmoji(cat){ return emojiMap[cat] || "📌"; }
+
+  // category colors (used for badges and row accent)
+  const categoryColors = {
+    "Travel":"rgba(6,182,212,0.95)",
+    "Grocery":"rgba(245,158,11,0.95)",
+    "Online Food":"rgba(239,68,68,0.95)",
+    "In Office":"rgba(99,102,241,0.95)",
+    "Party":"rgba(236,72,153,0.95)",
+    "Other":"rgba(16,185,129,0.95)"
+  };
+
+  // Firestore refs
+  const expensesCol = collection(db, 'expenses');
+  const borrowsCol = collection(db, 'borrows');
+  const notesCol = collection(db, 'notes');
+  const metaDoc = doc(db, 'meta', 'categories'); // store categories here
+
+  // -------------------------
+  // UI helpers
+  // -------------------------
+  function animateCounter(el, start, end, duration=800){
+    start = Number(start) || 0;
+    end = Number(end) || 0;
+    const stepTime = 16;
+    const steps = Math.max(1, Math.floor(duration / stepTime));
+    let currentStep = 0;
+    const diff = end - start;
+    function step(){
+      currentStep++;
+      const progress = currentStep / steps;
+      const ease = 1 - (1 - progress)*(1 - progress);
+      const val = start + diff * ease;
+      el.textContent = Number(val).toFixed(2);
+      if(currentStep < steps) requestAnimationFrame(step);
+      else el.textContent = Number(end).toFixed(2);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderDropdown(){
+    dropdown.innerHTML = '';
+    categories.forEach(c => {
+      const d = document.createElement('div');
+      d.className = 'dropdown-item';
+      d.textContent = c;
+      d.onclick = () => { catEl.value = c; dropdown.style.display = 'none'; };
+      dropdown.appendChild(d);
+    });
+    const add = document.createElement('div');
+    add.className = 'dropdown-item';
+    add.style.fontWeight='700';
+    add.style.color='#0ea5e9';
+    add.textContent = '+ Add Category';
+    add.onclick = async ()=> {
+      const name = prompt('Enter new category:');
+      if(name && name.trim() !== ''){
+        categories.push(name.trim());
+        renderDropdown();
+        dropdown.style.display = 'block';
+        // save categories to Firestore
+        try{ await setDoc(metaDoc, { categories }, { merge:true }); }
+        catch(e){ console.warn('save categories failed', e); }
+      }
+    };
+    dropdown.appendChild(add);
+  }
+  catEl.addEventListener('click', () => dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block');
+
+    // render table
+  function renderTable(){
+    const mobileList = document.getElementById('mobileList');
+    const isMobile = window.innerWidth <= 600;
+    tbody.innerHTML = '';
+    if(mobileList) mobileList.innerHTML = '';
+
+    const sorted = [...entries].sort((a,b) => { 
+      if(a.dateISO && b.dateISO) return new Date(b.dateISO)-new Date(a.dateISO); 
+      return 0; 
+    });
+
+    const filtered = sorted.filter(e => {
+      const s = (searchTerm || '').trim().toLowerCase();
+      if(!s) return true;
+      return (String(e.category || '').toLowerCase().includes(s) || String(e.desc || '').toLowerCase().includes(s) || String(e.date || '').toLowerCase().includes(s));
+    });
+
+    filtered.forEach(e => {
+      const color = categoryColors[e.category] || 'rgba(6,78,59,0.85)';
+      const catBadgeHtml = `<span class="cat-badge mobile-badge" style="background:${color};">${getEmoji(e.category)} ${e.category}</span>`;
+
+      if(isMobile && mobileList){
+        // render mobile card
+        const item = document.createElement('div');
+        item.className = 'mobile-item';
+        item.innerHTML = `
+          <div class="m-left">
+            <div class="m-date">${e.date}</div>
+            <div style="display:flex;flex-direction:column;min-width:0;">
+              <div class="m-desc">${catBadgeHtml} <span style="margin-left:6px;">${e.desc}</span></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;">
+            <div class="m-amt">₹\u00A0${Number(e.amount).toFixed(2)}</div>
+            <div class="m-actions">
+              <button class="edit">Edit</button>
+              <button class="del">Delete</button>
+            </div>
+          </div>
+        `;
+
+        // wire actions
+        item.querySelector('.edit').onclick = () => {
+          editIdEl.value = e.id;
+          dateEl.value = e.dateISO || '';
+          catEl.value = e.category;
+          descEl.value = e.desc;
+          amountEl.value = e.amount;
+          document.getElementById('submitBtn').textContent = 'Update Expense';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+        item.querySelector('.del').onclick = async () => {
+          if(confirm('Delete this expense?')){
+            try{ playSound('delete'); await deleteDoc(doc(db,'expenses', e.id)); }catch(err){ alert('Delete failed: ' + err); }
+          }
+        };
+
+        mobileList.appendChild(item);
+      } else {
+        const tr = document.createElement('tr');
+        tr.style.borderLeft = `6px solid ${color}`;
+        tr.innerHTML = `<td>${e.date}</td><td>${catBadgeHtml}</td><td>${e.desc}</td><td>₹\u00A0${Number(e.amount).toFixed(2)}</td><td><div class="actions"><button class="edit">Edit</button><button class="del">Delete</button></div></td>`;
+
+        tr.querySelector('.edit').onclick = () => {
+          editIdEl.value = e.id;
+          dateEl.value = e.dateISO || '';
+          catEl.value = e.category;
+          descEl.value = e.desc;
+          amountEl.value = e.amount;
+          document.getElementById('submitBtn').textContent = 'Update Expense';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+        tr.querySelector('.del').onclick = async () => {
+          if(confirm('Delete this expense?')){
+            try{ playSound('delete'); await deleteDoc(doc(db,'expenses', e.id)); }catch(err){ alert('Delete failed: ' + err); }
+          }
+        };
+        tbody.appendChild(tr);
+      }
+    });
+  }
+
+  // re-render table on resize/orientation change to switch views
+  window.addEventListener('resize', () => {
+    // debounce small reflows
+    clearTimeout(window._renderTableTimeout);
+    window._renderTableTimeout = setTimeout(() => renderTable(), 120);
+  });
+
+  // render summary
+  function renderSummary(){
+    summaryList.innerHTML = '';
+    const totals = {};
+    categories.forEach(c => totals[c] = 0);
+    
+    // Calculate daily summary
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let todayTotal = 0;
+    
+    entries.forEach(e => { 
+      if(!totals.hasOwnProperty(e.category)) totals[e.category]=0; 
+      totals[e.category]+= Number(e.amount) || 0;
+      
+      // Add today's expenses
+      if(e.dateISO) {
+        const eDate = new Date(e.dateISO);
+        eDate.setHours(0, 0, 0, 0);
+        if(eDate.getTime() === today.getTime()) {
+          todayTotal += Number(e.amount) || 0;
+        }
+      }
+    });
+
+    // Add daily summary card
+    if(todayTotal > 0 || entries.length > 0) {
+      const dailyCard = document.createElement('div');
+      dailyCard.className = 'daily-summary';
+      dailyCard.innerHTML = `
+        <div class="daily-summary-title">📅 <strong>Today's Spending</strong></div>
+        <div class="daily-summary-amount">₹\u00A0<span class="counter daily-amt">${todayTotal.toFixed(2)}</span></div>
+      `;
+      summaryList.appendChild(dailyCard);
+      
+      const dailyEl = dailyCard.querySelector('.daily-amt');
+      animateCounter(dailyEl, 0, todayTotal, 800);
+    }
+
+    const values = Object.values(totals);
+    const max = values.length ? Math.max(...values) : 0;
+
+    // Create grid for summary cards
+    const grid = document.createElement('div');
+    grid.className = 'summary-grid';
+
+    for(const cat of Object.keys(totals)){
+      const val = Number(totals[cat]);
+      const pct = max>0 ? Math.round((val/max)*100) : 0;
+
+      const card = document.createElement('div');
+      card.className = 'summary-row';
+      // show a colored left accent matching category color (like expense rows)
+      try{ card.style.borderLeft = '6px solid ' + color; }catch(e){}
+      const color = categoryColors[cat] || 'rgba(6,78,59,0.9)';
+      card.innerHTML = `
+        <div class="summary-top">
+          <div class="summary-left">
+            <div class="emoji" style="background:${color};">${getEmoji(cat)}</div>
+            <div>
+              <div class="cat-name">${cat}</div>
+              <div class="muted" style="font-size:12px; color:var(--muted);">${pct}% of top</div>
+            </div>
+          </div>
+          <div class="cat-amt">₹\u00A0<span class="counter stat">${val.toFixed(2)}</span></div>
+        </div>
+        <div class="summary-progress"><div class="progress-wrap" aria-hidden="true"><div class="progress" style="width:${pct}%;"></div></div></div>
+      `;
+      grid.appendChild(card);
+
+      const statEl = card.querySelector('.stat');
+      animateCounter(statEl, 0, val, 900);
+    }
+
+    summaryList.appendChild(grid);
+
+    const all = Object.values(totals).reduce((a,b)=>a+b,0);
+    animateCounter(allTotalEl, 0, all, 1000);
+
+    const ctx = document.getElementById('chart');
+    if(pieChart) pieChart.destroy();
+    pieChart = new Chart(ctx, { 
+      type:'pie', 
+      data:{ 
+        labels:Object.keys(totals), 
+        datasets:[{ 
+          data:Object.values(totals),
+          backgroundColor: [
+            'rgba(6, 182, 212, 0.85)',   // Travel - teal
+            'rgba(245, 158, 11, 0.85)',  // Grocery - amber (distinct)
+            'rgba(239, 68, 68, 0.85)',   // Online Food - red
+            'rgba(99, 102, 241, 0.85)',  // In Office - indigo
+            'rgba(236, 72, 153, 0.85)',  // Party - pink
+            'rgba(16, 185, 129, 0.85)'   // Other - green
+          ]
+        }] 
+      }, 
+      options:{ 
+        plugins:{ 
+          legend:{ 
+            position:'bottom',
+            labels: {
+              padding: 20,
+              usePointStyle: true
+            }
+          } 
+        }, 
+        maintainAspectRatio:false 
+      }
+    });
+  }
+
+  // render borrows
+  function renderBorrows(){
+    borrowListEl.innerHTML = '';
+    borrows.forEach(b => {
+      const div = document.createElement('div');
+      div.className = 'borrow-item';
+      const initials = (b.name || '').split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase();
+      const color = categoryColors['Other'] || 'rgba(16,185,129,0.95)';
+      div.innerHTML = `
+        <div class="borrow-left">
+          <div class="borrow-avatar" style="background:${color};">${initials}</div>
+          <div class="borrow-meta">
+            <div class="borrow-name">${b.name}</div>
+            <div class="borrow-sub">Borrowed</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="borrow-amt">₹\u00A0${Number(b.amount).toFixed(2)}</div>
+          <div class="borrow-actions"><button class="edit">Edit</button><button class="del">Delete</button></div>
+        </div>
+      `;
+
+      div.querySelector('.edit').onclick = () => {
+        borrowNameEl.value = b.name; 
+        borrowAmountEl.value = b.amount; 
+        addBorrowBtn.textContent='Update'; 
+        addBorrowBtn.dataset.edit=b.id; 
+        window.scrollTo({top: document.getElementById('root').offsetTop, behavior:'smooth'});
+      };
+
+      div.querySelector('.del').onclick = async () => {
+        if(confirm('Delete this borrowing entry?')){
+          try{ 
+            playSound('delete');
+            await deleteDoc(doc(db,'borrows', b.id)); 
+          } catch(e){ 
+            alert('Delete failed: ' + e); 
+          }
+        }
+      };
+      borrowListEl.appendChild(div);
+    });
+    
+    const total = borrows.reduce((s,b) => s + Number(b.amount), 0);
+    animateCounter(totalBorrowedEl, Number(totalBorrowedEl.textContent) || 0, total, 900);
+  }
+
+  // render notes
+  function renderNotes(){
+    noteListEl.innerHTML = '';
+    const sortedNotes = [...notes].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    if(sortedNotes.length === 0){
+      const empty = document.createElement('div');
+      empty.style.color = 'var(--muted)';
+      empty.style.fontSize = '13px';
+      empty.style.textAlign = 'center';
+      empty.style.padding = '20px';
+      empty.textContent = 'No notes yet. Add one to get started!';
+      noteListEl.appendChild(empty);
+      return;
+    }
+
+    sortedNotes.forEach(n => {
+      const div = document.createElement('div');
+      div.className = 'note-item';
+      const date = new Date(n.timestamp);
+      const timeStr = date.toLocaleString('en-GB', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+      const accentColor = 'rgba(14,165,233,0.95)';
+
+      div.innerHTML = `
+        <div class="note-accent" style="background:${accentColor}"></div>
+        <div class="note-body">
+          <div class="note-time">${timeStr}</div>
+          <div class="note-text">${n.text}</div>
+        </div>
+        <div class="note-actions"><button class="note-edit">Edit</button><button class="note-del">Delete</button></div>
+      `;
+
+      div.querySelector('.note-edit').onclick = () => {
+        noteInputEl.value = n.text;
+        addNoteBtn.dataset.edit = n.id;
+        addNoteBtn.textContent = 'Update Note';
+        noteInputEl.focus();
+      };
+
+      div.querySelector('.note-del').onclick = async () => {
+        if(confirm('Delete this note?')){
+          try{
+            playSound('delete');
+            await deleteDoc(doc(db, 'notes', n.id));
+          } catch(e){
+            alert('Delete failed: ' + e);
+          }
+        }
+      };
+
+      noteListEl.appendChild(div);
+    });
+  }
+
+  // -------------------------
+  // Firestore listeners & helpers
+  // -------------------------
+  async function loadAll(){
+    // load categories from meta doc, if exists
+    try{
+      const md = await getDoc(metaDoc);
+      if(md.exists()){
+        const data = md.data();
+        if(data && Array.isArray(data.categories)) categories = data.categories;
+      } else {
+        // write initial categories
+        await setDoc(metaDoc, { categories });
+      }
+    }catch(e){ console.warn('meta load err', e); }
+
+    // realtime expenses
+    onSnapshot(expensesCol, snap => {
+      entries = [];
+      snap.forEach(d => {
+        const obj = d.data();
+        obj.id = d.id; // Store Firestore document ID
+        entries.push(obj);
+      });
+      renderAll();
+    }, err => console.warn('expenses snapshot err', err));
+
+    // realtime borrows
+    onSnapshot(borrowsCol, snap => {
+      borrows = [];
+      snap.forEach(d => { 
+        const b = d.data(); 
+        b.id = d.id; 
+        borrows.push(b); 
+      });
+      renderBorrows();
+    }, err => console.warn('borrows snapshot err', err));
+
+    // realtime notes
+    onSnapshot(notesCol, snap => {
+      notes = [];
+      snap.forEach(d => {
+        const n = d.data();
+        n.id = d.id;
+        notes.push(n);
+      });
+      renderNotes();
+    }, err => console.warn('notes snapshot err', err));
+  }
+
+  // Fixed: Properly handle expense saving without undefined id
+  async function addOrUpdateExpense(expenseData, expenseId = null){
+    try{
+      // Create data object without the id field
+      const dataToSave = {
+        dateISO: expenseData.dateISO,
+        date: expenseData.date,
+        category: expenseData.category,
+        desc: expenseData.desc,
+        amount: Number(expenseData.amount) || 0
+      };
+      
+      if(expenseId){
+        // Update existing document
+        await setDoc(doc(db, 'expenses', expenseId), dataToSave, { merge: true });
+      } else {
+        // Create new document - Firestore will auto-generate ID
+        await addDoc(expensesCol, dataToSave);
+      }
+    }catch(e){ 
+      alert('Save failed: ' + e.message); 
+      console.error('Save error:', e); 
+      throw e;
+    }
+  }
+
+  // Fixed: Properly handle borrow saving without undefined id
+  async function addOrUpdateBorrow(borrowData, borrowId = null){
+    try{
+      const dataToSave = {
+        name: borrowData.name,
+        amount: Number(borrowData.amount) || 0
+      };
+      
+      if(borrowId){
+        // Update existing document
+        await setDoc(doc(db, 'borrows', borrowId), dataToSave, { merge: true });
+      } else {
+        // Create new document
+        await addDoc(borrowsCol, dataToSave);
+      }
+    }catch(e){ 
+      alert('Save failed: ' + e.message); 
+      console.error('Save error:', e); 
+      throw e;
+    }
+  }
+
+  // -------------------------
+  // Form handlers (wire to Firestore)
+  // -------------------------
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    
+    // Get form values
+    const expenseId = editIdEl.value || null;
+    const dateValue = dateEl.value;
+    
+    if(!dateValue || !catEl.value || !descEl.value || !amountEl.value || Number(amountEl.value) <= 0){
+      alert('Please fill all fields with valid values. Amount must be positive.');
+      return;
+    }
+    
+    const expenseData = {
+      dateISO: dateValue,
+      date: dateValue ? new Date(dateValue).toLocaleDateString('en-GB') : '',
+      category: catEl.value || 'Other',
+      desc: descEl.value.trim(),
+      amount: Number(amountEl.value)
+    };
+    
+    try {
+      playSound('success');
+      await addOrUpdateExpense(expenseData, expenseId);
+      
+      // Reset form on success
+      form.reset();
+      editIdEl.value = '';
+      document.getElementById('submitBtn').textContent = 'Add Expense';
+      
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch(error) {
+      console.error('Failed to save expense:', error);
+    }
+  });
+
+  addBorrowBtn.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    
+    const borrowId = addBorrowBtn.dataset.edit || null;
+    const name = (borrowNameEl.value || '').trim();
+    const amount = Number(borrowAmountEl.value) || 0;
+    
+    if(!name || amount <= 0){
+      alert('Please enter a valid name and positive amount');
+      return;
+    }
+    
+    const borrowData = {
+      name: name,
+      amount: amount
+    };
+    
+    try {
+      playSound('add');
+      await addOrUpdateBorrow(borrowData, borrowId);
+      
+      // Reset form
+      borrowNameEl.value = '';
+      borrowAmountEl.value = '';
+      addBorrowBtn.textContent = 'Add Borrowing';
+      delete addBorrowBtn.dataset.edit;
+    } catch(error) {
+      console.error('Failed to save borrowing:', error);
+    }
+  });
+
+  // handle add/update note
+  addNoteBtn.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    
+    const noteId = addNoteBtn.dataset.edit || null;
+    const text = (noteInputEl.value || '').trim();
+    
+    if(!text){
+      alert('Please enter a note');
+      return;
+    }
+    
+    const noteData = {
+      text: text,
+      timestamp: new Date().toISOString()
+    };
+    
+    try {
+      playSound('add');
+      if(noteId){
+        await setDoc(doc(db, 'notes', noteId), noteData, { merge: true });
+      } else {
+        await addDoc(notesCol, noteData);
+      }
+      
+      // Reset form
+      noteInputEl.value = '';
+      addNoteBtn.textContent = 'Add Note';
+      delete addNoteBtn.dataset.edit;
+    } catch(error) {
+      alert('Failed to save note: ' + error.message);
+    }
+  });
+
+  // allow Enter key to add note
+  noteInputEl.addEventListener('keypress', (e) => {
+    if(e.key === 'Enter'){
+      addNoteBtn.click();
+    }
+  });
+
+  // clear all (delete all docs)
+  document.getElementById('clearAll').addEventListener('click', async () => {
+    if(!confirm('Clear ALL data (expenses + borrowings + notes)? This will remove data from your Firestore. Proceed?')) return;
+    
+    try{
+      // Delete all expenses
+      const eSnap = await getDocs(expensesCol);
+      const expenseDeletions = [];
+      eSnap.forEach((d) => {
+        expenseDeletions.push(deleteDoc(doc(db, 'expenses', d.id)));
+      });
+      await Promise.all(expenseDeletions);
+      
+      // Delete all borrows
+      const bSnap = await getDocs(borrowsCol);
+      const borrowDeletions = [];
+      bSnap.forEach((d) => {
+        borrowDeletions.push(deleteDoc(doc(db, 'borrows', d.id)));
+      });
+      await Promise.all(borrowDeletions);
+
+      // Delete all notes
+      const nSnap = await getDocs(notesCol);
+      const noteDeletions = [];
+      nSnap.forEach((d) => {
+        noteDeletions.push(deleteDoc(doc(db, 'notes', d.id)));
+      });
+      await Promise.all(noteDeletions);
+      
+      alert('All data cleared successfully.');
+    } catch(err) { 
+      alert('Clear failed: ' + err.message); 
+    }
+  });
+
+  // export PDF (light theme) - handles full content with multiple pages if needed
+  document.getElementById('exportPDF').addEventListener('click', async () => {
+    const root = document.getElementById('root');
+    const oldBG = root.style.background;
+    const oldColor = root.style.color;
+    const oldMaxHeight = root.style.maxHeight;
+    
+    // Change to white background for PDF
+    root.style.background = 'white';
+    root.style.color = 'black';
+    root.style.maxHeight = 'none';
+    
+    await new Promise(r => setTimeout(r, 220));
+    
+    try {
+      const canvas = await html2canvas(root, { 
+        scale: 2, 
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        allowTaint: true,
+        scrollY: -window.scrollY,
+        scrollX: -window.scrollX,
+        windowHeight: root.scrollHeight
+      });
+      
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 210 - 20; // A4 width minus margins in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      const img = canvas.toDataURL('image/png');
+      let heightLeft = imgHeight;
+      let position = 10;
+      
+      // Add first page
+      pdf.addImage(img, 'PNG', 10, position, imgWidth, imgHeight);
+      heightLeft -= 277; // A4 height in mm minus margins
+      
+      // Add additional pages if needed
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight + 10;
+        pdf.addPage();
+        pdf.addImage(img, 'PNG', 10, position, imgWidth, imgHeight);
+        heightLeft -= 277;
+      }
+      
+      pdf.save('prabir_expense_tracker.pdf');
+    } catch(err) {
+      alert('PDF export failed: ' + err.message);
+    } finally {
+      // Restore original styles
+      root.style.background = oldBG;
+      root.style.color = oldColor;
+      root.style.maxHeight = oldMaxHeight;
+    }
+  });
+
+  // Export CSV
+  document.getElementById('exportCSV').addEventListener('click', (ev) => {
+    ev.preventDefault();
+    try{
+      const rows = [];
+      rows.push(['Date','DateISO','Category','Description','Amount']);
+      const sorted = [...entries].sort((a,b) => { if(a.dateISO && b.dateISO) return new Date(b.dateISO)-new Date(a.dateISO); return 0; });
+      sorted.forEach(e => {
+        rows.push([e.date || '', e.dateISO || '', e.category || '', e.desc || '', Number(e.amount).toFixed(2)]);
+      });
+
+      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'expenses.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }catch(err){ alert('CSV export failed: ' + err.message); }
+  });
+
+  // Search input
+  if(searchInput){
+    searchInput.addEventListener('input', (e) => { searchTerm = e.target.value || ''; renderTable(); });
+  }
+
+  // -------------------------
+  // Render all (UI)
+  // -------------------------
+  function renderAll(){ 
+    renderDropdown(); 
+    renderTable(); 
+    renderSummary(); 
+  }
+
+  // Initialize
+  loadAll();
+  renderDropdown();
+  renderNotes();
+
+  // Set today's date as default
+  const today = new Date().toISOString().split('T')[0];
+  dateEl.value = today;
+
+  // background particles
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+
+
+  let W = canvas.width = window.innerWidth;
+  let H = canvas.height = window.innerHeight;
+  window.addEventListener('resize', () => {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  });
+
+  // Increase particle count and speed
+  let PARTICLE_COUNT = Math.min(320, Math.floor((window.innerWidth * window.innerHeight) / 5000));
+  let particles = [];
+
+  function createParticles() {
+    particles = [];
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      particles.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 2.2 + 0.8,
+        dx: (Math.random() * 2.2 - 1.1),
+        dy: (Math.random() * 2.2 - 1.1),
+        alpha: Math.random() * 0.6 + 0.2
+      });
+    }
+  }
+  createParticles();
+  window.addEventListener('resize', () => {
+    PARTICLE_COUNT = Math.min(320, Math.floor((window.innerWidth * window.innerHeight) / 5000));
+    createParticles();
+  });
+
+  // Mouse interaction for particles
+  let mouse = { x: W / 2, y: H / 2, active: false };
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+    mouse.active = true;
+  });
+  canvas.addEventListener('mouseleave', () => { mouse.active = false; });
+
+  function drawParticles() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(16, 185, 129, ${p.alpha})`;
+      ctx.fill();
+
+      // Particle movement
+      p.x += p.dx * 1.2 + Math.sin((Date.now() / 600) + p.x * 0.001) * 0.45;
+      p.y += p.dy * 1.2 + Math.cos((Date.now() / 700) + p.y * 0.001) * 0.45;
+
+      // Attraction to mouse
+      if (mouse.active) {
+        const dx = mouse.x - p.x;
+        const dy = mouse.y - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 160) { // Only affect nearby particles
+          const force = (160 - dist) / 160 * 0.7; // Attraction strength
+          p.x += dx / dist * force * 2.2;
+          p.y += dy / dist * force * 2.2;
+        }
+      }
+
+      if (p.x < -10) p.x = W + 10;
+      if (p.x > W + 10) p.x = -10;
+      if (p.y < -10) p.y = H + 10;
+      if (p.y > H + 10) p.y = -10;
+    });
+    requestAnimationFrame(drawParticles);
+  }
+  drawParticles();
+
+  // service worker registration (PWA)
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').then(reg => {
+        console.log('Service worker registered:', reg.scope);
+      }).catch(err => console.warn('SW register failed:', err));
+    });
+  }
+
+  </script>
+</body>
+</html>
